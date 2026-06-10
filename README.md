@@ -178,7 +178,7 @@ Once you take these screenshots, save them with the exact filenames listed below
   3. Alternatively, you can screenshot the `logs/validation_results.txt` output showing the allowed/blocked test results.
 
 - **GitHub Username:** olasmi02
-- **Repository:** [https://github.com/olasmi02/azure-firewall-assignment](https://github.com/olasmi02/azure-firewall-assignment)
+- **Repository:** [https://github.com/nzemikez/azure-firewall-assignment](https://github.com/nzemikez/azure-firewall-assignment)
 - **Subscription:** Azure for Students
 - **Date:** June 2026
 - **Firewall Public IP:** 20.61.208.52
