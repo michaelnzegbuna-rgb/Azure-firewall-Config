@@ -1,50 +1,135 @@
-AZURE FIREWALL APPLICATION RULE LOGS
-=====================================
-Source: Azure Monitor / Log Analytics Workspace (law-firewall-lab)
-Firewall: fw-lab | Resource Group: rg-azure-firewall-lab
-Query: AzureFirewallApplicationRule logs
+# Azure Firewall Application Traffic Monitoring Report
 
-Sample Log Entries:
--------------------
+## Log Collection Details
 
-[2026-06-09 09:15:42 UTC] Action=Allow Rule=AllowMicrosoft
-  Src=10.0.2.4:54100 → FQDN=www.microsoft.com Protocol=Https:443
-  RuleCollection=AllowWebTraffic Policy=fwpolicy-lab
+The following records were obtained from Azure Monitor through the configured Log Analytics Workspace.
 
-[2026-06-09 09:15:58 UTC] Action=Allow Rule=AllowMicrosoft
-  Src=10.0.2.4:54101 → FQDN=login.microsoftonline.com Protocol=Https:443
-  RuleCollection=AllowWebTraffic Policy=fwpolicy-lab
+**Workspace:** `law-firewall-lab`
+**Firewall Instance:** `fw-lab`
+**Resource Group:** `rg-azure-firewall-lab`
+**Log Category:** Application Rule Processing Events
 
-[2026-06-09 09:16:10 UTC] Action=Allow Rule=AllowGitHub
-  Src=10.0.2.4:54150 → FQDN=api.github.com Protocol=Https:443
-  RuleCollection=AllowWebTraffic Policy=fwpolicy-lab
+---
 
-[2026-06-09 09:16:22 UTC] Action=Allow Rule=AllowGitHub
-  Src=10.0.2.4:54151 → FQDN=github.com Protocol=Https:443
-  RuleCollection=AllowWebTraffic Policy=fwpolicy-lab
+## Recorded Firewall Events
 
-[2026-06-09 09:16:35 UTC] Action=Deny Rule=DenyAllWeb
-  Src=10.0.2.4:54200 → FQDN=www.reddit.com Protocol=Https:443
-  RuleCollection=DenyAllWeb Policy=fwpolicy-lab
+### Authorized Traffic Events
 
-[2026-06-09 09:16:47 UTC] Action=Deny Rule=DenyAllWeb
-  Src=10.0.2.4:54201 → FQDN=www.facebook.com Protocol=Https:443
-  RuleCollection=DenyAllWeb Policy=fwpolicy-lab
+**Timestamp:** 09 June 2026 – 09:15:42 UTC
 
-[2026-06-09 09:16:59 UTC] Action=Deny Rule=DenyAllWeb
-  Src=10.0.2.4:54202 → FQDN=www.example.com Protocol=Http:80
-  RuleCollection=DenyAllWeb Policy=fwpolicy-lab
+* Decision: **Permitted**
+* Rule Applied: **AllowMicrosoft**
+* Source Address: `10.0.2.4:54100`
+* Destination: `www.microsoft.com`
+* Protocol/Port: `HTTPS (443)`
+* Rule Collection: `AllowWebTraffic`
+* Firewall Policy: `fwpolicy-lab`
 
-Summary:
---------
-Allowed Connections: 4
-Blocked Connections: 3
+---
 
-KQL Query Used:
----------------
+**Timestamp:** 09 June 2026 – 09:15:58 UTC
+
+* Decision: **Permitted**
+* Rule Applied: **AllowMicrosoft**
+* Source Address: `10.0.2.4:54101`
+* Destination: `login.microsoftonline.com`
+* Protocol/Port: `HTTPS (443)`
+* Rule Collection: `AllowWebTraffic`
+* Firewall Policy: `fwpolicy-lab`
+
+---
+
+**Timestamp:** 09 June 2026 – 09:16:10 UTC
+
+* Decision: **Permitted**
+* Rule Applied: **AllowGitHub**
+* Source Address: `10.0.2.4:54150`
+* Destination: `api.github.com`
+* Protocol/Port: `HTTPS (443)`
+* Rule Collection: `AllowWebTraffic`
+* Firewall Policy: `fwpolicy-lab`
+
+---
+
+**Timestamp:** 09 June 2026 – 09:16:22 UTC
+
+* Decision: **Permitted**
+* Rule Applied: **AllowGitHub**
+* Source Address: `10.0.2.4:54151`
+* Destination: `github.com`
+* Protocol/Port: `HTTPS (443)`
+* Rule Collection: `AllowWebTraffic`
+* Firewall Policy: `fwpolicy-lab`
+
+---
+
+### Restricted Traffic Events
+
+**Timestamp:** 09 June 2026 – 09:16:35 UTC
+
+* Decision: **Blocked**
+* Rule Applied: **DenyAllWeb**
+* Source Address: `10.0.2.4:54200`
+* Destination: `www.reddit.com`
+* Protocol/Port: `HTTPS (443)`
+* Rule Collection: `DenyAllWeb`
+* Firewall Policy: `fwpolicy-lab`
+
+---
+
+**Timestamp:** 09 June 2026 – 09:16:47 UTC
+
+* Decision: **Blocked**
+* Rule Applied: **DenyAllWeb**
+* Source Address: `10.0.2.4:54201`
+* Destination: `www.facebook.com`
+* Protocol/Port: `HTTPS (443)`
+* Rule Collection: `DenyAllWeb`
+* Firewall Policy: `fwpolicy-lab`
+
+---
+
+**Timestamp:** 09 June 2026 – 09:16:59 UTC
+
+* Decision: **Blocked**
+* Rule Applied: **DenyAllWeb**
+* Source Address: `10.0.2.4:54202`
+* Destination: `www.example.com`
+* Protocol/Port: `HTTP (80)`
+* Rule Collection: `DenyAllWeb`
+* Firewall Policy: `fwpolicy-lab`
+
+---
+
+## Traffic Analysis Summary
+
+The firewall policy successfully enforced the configured application rules by allowing approved destinations and preventing access to unauthorized websites.
+
+| Result            | Total Events |
+| ----------------- | ------------ |
+| Approved Requests | 4            |
+| Rejected Requests | 3            |
+
+### Key Findings
+
+* Access to Microsoft-related services was successfully permitted.
+* GitHub endpoints were reachable according to policy configuration.
+* Requests directed to unapproved domains were denied.
+* Firewall rule collections operated as expected, demonstrating correct policy enforcement.
+
+---
+
+## Log Analytics Query
+
+The following Kusto Query Language (KQL) statement was executed to retrieve and analyze recent Azure Firewall application rule events:
+
+```kql
 AzureDiagnostics
 | where Category == "AzureFirewallApplicationRule"
 | project TimeGenerated, msg_s, Action_s
-| extend FQDN = extract("FQDN: ([^ ]+)", 1, msg_s)
+| extend DestinationHost = extract("FQDN: ([^ ]+)", 1, msg_s)
 | order by TimeGenerated desc
 | take 50
+```
+
+This query filters Azure Firewall application-rule logs, extracts destination hostnames from the message field, sorts the results by event time, and returns the fifty most recent records for review.
