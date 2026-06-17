@@ -1,38 +1,140 @@
-AZURE FIREWALL NETWORK RULE LOGS
-==================================
-Source: Azure Monitor / Log Analytics Workspace (law-firewall-lab)
-Firewall: fw-lab | Resource Group: rg-azure-firewall-lab
-Query: AzureFirewallNetworkRule logs
+# Azure Firewall Network Traffic Inspection Report
 
-Sample Log Entries:
--------------------
+## Monitoring Environment
 
-[2026-06-09 09:15:02 UTC] Action=Allow Rule=AllowDNS Protocol=UDP
-  Src=10.0.2.4:49152 → Dst=8.8.8.8:53
-  RuleCollection=AllowNetworkRules Policy=fwpolicy-lab
+The following network security events were collected from Azure Monitor and analyzed through the associated Log Analytics Workspace.
 
-[2026-06-09 09:15:14 UTC] Action=Allow Rule=AllowDNS Protocol=UDP
-  Src=10.0.2.4:49153 → Dst=8.8.4.4:53
-  RuleCollection=AllowNetworkRules Policy=fwpolicy-lab
+**Log Analytics Workspace:** `law-firewall-lab`
+**Azure Firewall Instance:** `fw-lab`
+**Resource Group:** `rg-azure-firewall-lab`
+**Log Category:** Network Rule Events
 
-[2026-06-09 09:15:31 UTC] Action=Allow Rule=AllowICMP Protocol=ICMP
-  Src=10.0.2.4 → Dst=8.8.8.8
-  RuleCollection=AllowNetworkRules Policy=fwpolicy-lab
+---
 
-[2026-06-09 09:16:45 UTC] Action=Deny Rule=DefaultDeny Protocol=TCP
-  Src=10.0.2.4:54201 → Dst=93.184.216.34:80
-  RuleCollection=DenyAll Policy=fwpolicy-lab
-  Note: 93.184.216.34 = example.com
+# Network Traffic Events Captured
 
-[2026-06-09 09:17:12 UTC] Action=Deny ThreatIntel=True Protocol=TCP
-  Src=10.0.2.4:54300 → Dst=203.0.113.100:80
-  Reason=ThreatIntelligence Category=MaliciousIP
-  Policy=fwpolicy-lab
+The records below illustrate how Azure Firewall evaluated inbound and outbound network traffic based on the configured network rule collections and security policies.
 
-KQL Query Used:
----------------
+---
+
+## Approved Network Connections
+
+### Event 1 – DNS Resolution Request
+
+**Event Time:** 09 June 2026 – 09:15:02 UTC
+
+* Result: **Allowed**
+* Matched Rule: **AllowDNS**
+* Communication Type: **UDP**
+* Source Endpoint: `10.0.2.4:49152`
+* Destination Endpoint: `8.8.8.8:53`
+* Rule Collection: `AllowNetworkRules`
+* Applied Policy: `fwpolicy-lab`
+
+This event confirms that DNS traffic to Google's public DNS server was successfully permitted.
+
+---
+
+### Event 2 – Secondary DNS Request
+
+**Event Time:** 09 June 2026 – 09:15:14 UTC
+
+* Result: **Allowed**
+* Matched Rule: **AllowDNS**
+* Communication Type: **UDP**
+* Source Endpoint: `10.0.2.4:49153`
+* Destination Endpoint: `8.8.4.4:53`
+* Rule Collection: `AllowNetworkRules`
+* Applied Policy: `fwpolicy-lab`
+
+The firewall allowed DNS communication with an alternative public DNS server.
+
+---
+
+### Event 3 – ICMP Connectivity Test
+
+**Event Time:** 09 June 2026 – 09:15:31 UTC
+
+* Result: **Allowed**
+* Matched Rule: **AllowICMP**
+* Communication Type: **ICMP**
+* Source Address: `10.0.2.4`
+* Destination Address: `8.8.8.8`
+* Rule Collection: `AllowNetworkRules`
+* Applied Policy: `fwpolicy-lab`
+
+This entry indicates that ICMP traffic (ping requests) was authorized by the firewall policy.
+
+---
+
+## Blocked Network Connections
+
+### Event 4 – Unauthorized HTTP Request
+
+**Event Time:** 09 June 2026 – 09:16:45 UTC
+
+* Result: **Denied**
+* Matched Rule: **DefaultDeny**
+* Communication Type: **TCP**
+* Source Endpoint: `10.0.2.4:54201`
+* Destination Endpoint: `93.184.216.34:80`
+* Rule Collection: `DenyAll`
+* Applied Policy: `fwpolicy-lab`
+
+**Additional Information:** The destination IP address `93.184.216.34` corresponds to the website `example.com`.
+
+This event demonstrates that traffic not explicitly permitted by policy was blocked.
+
+---
+
+### Event 5 – Threat Intelligence Enforcement
+
+**Event Time:** 09 June 2026 – 09:17:12 UTC
+
+* Result: **Blocked**
+* Threat Intelligence Triggered: **Yes**
+* Communication Type: **TCP**
+* Source Endpoint: `10.0.2.4:54300`
+* Destination Endpoint: `203.0.113.100:80`
+* Detection Category: **Malicious IP Address**
+* Block Reason: **Threat Intelligence Match**
+* Applied Policy: `fwpolicy-lab`
+
+This record confirms that Azure Firewall's Threat Intelligence feature identified and prevented communication with a potentially malicious external address.
+
+---
+
+# Security Event Overview
+
+Analysis of the captured logs confirms that the firewall policies functioned as intended by allowing approved network services while preventing unauthorized or potentially harmful traffic.
+
+| Traffic Outcome        | Number of Events |
+| ---------------------- | ---------------- |
+| Authorized Connections | 3                |
+| Blocked Connections    | 2                |
+
+### Observations
+
+* DNS requests to approved public DNS servers were successfully processed.
+* ICMP traffic was permitted according to the configured network rules.
+* Unapproved web traffic was denied by the default security policy.
+* Threat Intelligence protection successfully intercepted communication attempts involving a flagged IP address.
+* Network rule collections were enforced consistently throughout the monitoring period.
+
+---
+
+# Log Retrieval Query
+
+The following Kusto Query Language (KQL) statement was used to retrieve Azure Firewall network rule events from Log Analytics:
+
+```kql id="9l91sq"
 AzureDiagnostics
 | where Category == "AzureFirewallNetworkRule"
 | project TimeGenerated, msg_s, Action_s
 | order by TimeGenerated desc
 | take 50
+```
+
+### Query Purpose
+
+This query filters Azure Firewall network-rule records, selects key event attributes, arranges the results in reverse chronological order, and displays the fifty most recent entries for analysis and troubleshooting purposes.
