@@ -1,26 +1,31 @@
-# Troubleshooting Report – Azure Firewall Lab
+# Azure Firewall Deployment Challenges and Resolution Report
 
-## Overview
+## Introduction
 
-This report documents the challenges encountered during the deployment of the Azure Firewall lab environment and the steps taken to diagnose and resolve each issue. The troubleshooting process demonstrates practical application of network diagnostics in a cloud environment.
+This document outlines the technical issues encountered during the implementation of the Azure Firewall laboratory environment, along with the investigative procedures and corrective actions applied to resolve them. The report highlights practical troubleshooting techniques used to identify configuration errors, restore functionality, and ensure successful deployment of Azure Firewall services.
 
 ---
 
-## Issue 1: AzureFirewallSubnet Size Too Small
+# Challenge 1 – Insufficient Azure Firewall Subnet Capacity
 
-### Problem
-When initially planning the subnet allocation, a `/28` prefix was considered for the `AzureFirewallSubnet`. However, deployment failed with:
+## Description of the Issue
 
-```
-Error: The subnet AzureFirewallSubnet size /28 is too small.
+During the network design phase, the Azure Firewall subnet was initially allocated using a **/28 CIDR range**. When deployment was attempted, Azure returned an error indicating that the subnet size did not meet the minimum requirement for Azure Firewall.
+
+**Error Message**
+
+```text
+The subnet AzureFirewallSubnet size /28 is too small.
 Azure Firewall requires a minimum subnet size of /26.
 ```
 
-### Root Cause
-Azure Firewall is a highly available, auto-scaling service. It reserves IP addresses within the subnet for infrastructure management nodes. A `/26` (64 addresses) is the minimum to accommodate the firewall's scaling requirements.
+## Investigation Findings
 
-### Resolution
-Updated the subnet prefix from `/28` to `/26`:
+Azure Firewall is designed as a scalable and highly available managed service. To support infrastructure operations, service updates, and future scaling activities, Azure reserves multiple IP addresses within the subnet. As a result, smaller subnet allocations cannot accommodate firewall requirements.
+
+## Corrective Action
+
+The subnet address range was expanded from **/28** to **/26**, satisfying Azure Firewall deployment prerequisites.
 
 ```bash
 az network vnet subnet update \
@@ -30,32 +35,32 @@ az network vnet subnet update \
   --address-prefixes 10.0.1.0/26
 ```
 
-### Lesson Learned
-Always provision `AzureFirewallSubnet` with a minimum `/26` CIDR block.
+## Key Takeaway
+
+Azure Firewall deployments should always use an **AzureFirewallSubnet** with a minimum address space of **/26** to avoid deployment failures and future scaling limitations.
 
 ---
 
-## Issue 2: Public IP SKU Mismatch
+# Challenge 2 – Unsupported Public IP Configuration
 
-### Problem
-Initially attempted to create the Public IP with the `Basic` SKU:
+## Description of the Issue
 
-```bash
-az network public-ip create --sku Basic ...
-```
+A Public IP resource was initially created using the **Basic SKU** option. While the IP resource was successfully provisioned, Azure Firewall failed when attempting to associate with it.
 
-This resulted in a deployment error when attaching the IP to the firewall:
+**Error Message**
 
-```
-Error: Azure Firewall requires a Standard SKU public IP address.
+```text
+Azure Firewall requires a Standard SKU public IP address.
 Basic SKU public IP addresses are not supported.
 ```
 
-### Root Cause
-Azure Firewall Standard requires a **Standard SKU** static public IP address. Basic SKU IPs lack the zone-redundancy and availability guarantees required by the firewall service.
+## Investigation Findings
 
-### Resolution
-Recreated the Public IP with the correct SKU:
+Azure Firewall requires enhanced availability, resiliency, and networking capabilities that are only available through the Standard SKU Public IP offering.
+
+## Corrective Action
+
+The existing Public IP was recreated using the Standard SKU configuration and static allocation.
 
 ```bash
 az network public-ip create \
@@ -65,18 +70,21 @@ az network public-ip create \
   --allocation-method Static
 ```
 
-### Lesson Learned
-Azure Firewall Standard → Always use Standard SKU Public IPs. Basic IPs are incompatible.
+## Key Takeaway
+
+Always deploy Azure Firewall with a **Standard SKU Static Public IP**, as Basic SKU addresses are not compatible with firewall services.
 
 ---
 
-## Issue 3: Traffic Not Being Inspected (UDR Missing)
+# Challenge 3 – Firewall Policies Not Affecting Traffic
 
-### Problem
-After deploying the firewall and configuring rules, test traffic from the VM was bypassing the firewall entirely. The VM could reach the internet without any filtering.
+## Description of the Issue
 
-### Diagnosis
-Checked the effective routes on the VM's network interface:
+Following firewall deployment and policy configuration, outbound internet traffic from workload virtual machines remained unrestricted. Security rules appeared to have no effect on network communications.
+
+## Investigation Process
+
+The effective route table assigned to the virtual machine network interface was reviewed.
 
 ```bash
 az network nic show-effective-route-table \
@@ -85,13 +93,15 @@ az network nic show-effective-route-table \
   --output table
 ```
 
-Output showed no custom routes — the VM was using the default Azure system routes.
+The output revealed that traffic continued to follow Azure's default system routes instead of being redirected through Azure Firewall.
 
-### Root Cause
-The Route Table with the UDR was created but **not associated** with the `WorkloadSubnet`. Without the association, VMs in the subnet continued using Azure's default routing.
+## Investigation Findings
 
-### Resolution
-Associated the Route Table with the WorkloadSubnet:
+Although a User Defined Route (UDR) had been created, it had not been attached to the workload subnet. Consequently, workload resources continued using Azure's default routing configuration.
+
+## Corrective Action
+
+The route table was explicitly linked to the workload subnet.
 
 ```bash
 az network vnet subnet update \
@@ -101,43 +111,44 @@ az network vnet subnet update \
   --route-table rt-firewall-lab
 ```
 
-After association, confirmed effective routes showed the custom UDR:
+Verification confirmed that all outbound traffic was subsequently directed to the firewall's private IP address.
 
-```
-Source    State    Address Prefix    Next Hop Type      Next Hop IP
---------  -------  ----------------  -----------------  -----------
-User      Active   0.0.0.0/0         VirtualAppliance   10.0.1.4
-```
+## Key Takeaway
 
-### Lesson Learned
-Creating a Route Table is not enough — it must be explicitly **associated** with each subnet that needs forced tunneling.
+Creating a route table alone does not enforce routing policies. The route table must also be associated with the target subnet for traffic inspection to occur.
 
 ---
 
-## Issue 4: DNS Resolution Failures Inside VM
+# Challenge 4 – Domain Name Resolution Failures
 
-### Problem
-After enforcing traffic through the firewall, the test VM could not resolve domain names:
+## Description of the Issue
 
-```
+After implementing forced tunnelling through Azure Firewall, workload virtual machines could no longer resolve domain names.
+
+**Observed Symptoms**
+
+```text
 curl: (6) Could not resolve host: microsoft.com
 nslookup: connection timed out; no servers could be reached
 ```
 
-### Diagnosis
-The VM was using Azure's default DNS (168.63.129.16) which was being blocked by the firewall's default-deny rules.
+## Investigation Process
+
+The DNS configuration on the virtual machine was reviewed.
 
 ```bash
-# Check what DNS server the VM is using
 cat /etc/resolv.conf
-# nameserver 168.63.129.16
 ```
 
-### Root Cause
-The firewall's Network Rule collection was not yet configured to allow DNS traffic (UDP port 53). All traffic was implicitly denied.
+The VM was configured to use Azure's default DNS service.
 
-### Resolution
-Added a Network Rule to allow DNS:
+## Investigation Findings
+
+DNS requests were being blocked because no firewall rule existed to permit UDP traffic on port 53. Since the firewall was operating with a default-deny approach, DNS queries were rejected.
+
+## Corrective Action
+
+A dedicated network rule was created to permit DNS traffic to approved DNS servers.
 
 ```bash
 az network firewall policy rule-collection-group collection add-filter-collection \
@@ -155,45 +166,59 @@ az network firewall policy rule-collection-group collection add-filter-collectio
   --destination-ports 53
 ```
 
-### Lesson Learned
-When deploying a default-deny firewall, DNS must be the **first rule** configured — without it, nothing works, not even downloading updates.
+## Key Takeaway
+
+DNS traffic should be permitted early in firewall configuration, as most application and internet services depend on successful name resolution.
 
 ---
 
-## Issue 5: Application Rules Not Working Without DNS
+# Challenge 5 – Application Rules Failing to Match Traffic
 
-### Problem
-Even after configuring Application Rules to allow `*.microsoft.com`, HTTPS connections still failed.
+## Description of the Issue
 
-### Root Cause
-Application Rules use FQDN matching, which requires DNS resolution to function. Since DNS was blocked (see Issue 4), the firewall could not resolve domain names to compare against FQDN rules.
+Despite creating application rules to allow traffic to approved domains such as Microsoft services, HTTPS requests continued to fail.
 
-### Resolution
-Resolved after fixing Issue 4 (allowing DNS). Rule evaluation order is:
-1. NAT Rules (processed first)
+## Investigation Findings
+
+Azure Firewall application rules depend on Fully Qualified Domain Name (FQDN) resolution. Because DNS traffic was blocked, domain names could not be resolved and application rule processing could not occur.
+
+## Corrective Action
+
+Restoring DNS functionality immediately resolved the application rule issue, allowing FQDN-based filtering to function correctly.
+
+## Key Takeaway
+
+Application rules rely on DNS resolution. Without DNS access, Azure Firewall cannot evaluate FQDN-based policies.
+
+### Rule Processing Sequence
+
+1. NAT Rules
 2. Network Rules
 3. Application Rules
 
-DNS must be working before application-layer FQDN rules can function.
-
-### Lesson Learned
-Azure Firewall processes rules in order: **NAT → Network → Application**. DNS must be permitted at the Network rule level before Application rules can match FQDNs.
+Proper DNS functionality is therefore a prerequisite for application-layer filtering.
 
 ---
 
-## Issue 6: Threat Intelligence Not Triggering Alerts
+# Challenge 6 – Missing Threat Intelligence Events
 
-### Problem
-After enabling Threat Intelligence in `Alert` mode, no entries appeared in Log Analytics for threat-based blocks.
+## Description of the Issue
 
-### Root Cause
-Two contributing factors:
-1. Log Analytics diagnostic settings were not yet configured (no logs being sent)
-2. Test traffic was not directed to any known-malicious IP/domain
+Threat Intelligence mode was enabled; however, no threat-related events appeared in monitoring logs.
 
-### Resolution
+## Investigation Findings
 
-**Step 1:** Enable diagnostic settings:
+Two primary factors contributed to the issue:
+
+1. Diagnostic logging had not yet been configured.
+2. Test traffic was not targeting any known malicious destinations.
+
+Without log collection and relevant traffic, no threat intelligence events could be generated.
+
+## Corrective Action
+
+### Configure Diagnostic Logging
+
 ```bash
 az monitor diagnostic-settings create \
   --name fw-diagnostics \
@@ -202,7 +227,8 @@ az monitor diagnostic-settings create \
   --logs '[{"category":"AzureFirewallNetworkRule","enabled":true},{"category":"AzureFirewallApplicationRule","enabled":true}]'
 ```
 
-**Step 2:** Switch Threat Intel to `Deny` mode to make blocking visible:
+### Enable Active Blocking
+
 ```bash
 az network firewall policy update \
   --resource-group rg-azure-firewall-lab \
@@ -210,7 +236,8 @@ az network firewall policy update \
   --threat-intel-mode "Deny"
 ```
 
-**Step 3:** Query logs in Log Analytics:
+### Validate Through Log Analytics
+
 ```kql
 AzureDiagnostics
 | where Category == "AzureFirewallNetworkRule"
@@ -218,41 +245,63 @@ AzureDiagnostics
 | project TimeGenerated, msg_s, Action_s
 ```
 
----
+## Key Takeaway
 
-## Summary of Key Troubleshooting Lessons
-
-| # | Issue | Root Cause | Fix |
-|---|-------|------------|-----|
-| 1 | Subnet too small | /28 vs required /26 | Use minimum /26 for AzureFirewallSubnet |
-| 2 | Public IP SKU mismatch | Basic SKU incompatible | Use Standard SKU Public IP |
-| 3 | Traffic bypassing firewall | Route Table not associated | Associate UDR with subnet |
-| 4 | DNS failures | UDP/53 not allowed | Add DNS network rule first |
-| 5 | App rules not matching | DNS blocked = FQDN unresolvable | Fix DNS before app rules |
-| 6 | No threat intel logs | Diagnostic settings missing | Enable Log Analytics diagnostics |
+Threat Intelligence monitoring requires both diagnostic logging and traffic that matches Microsoft's threat intelligence feeds before events become visible.
 
 ---
 
-## Diagnostic Commands Reference
+# Summary of Resolved Deployment Issues
+
+| Reference | Issue Encountered                  | Underlying Cause                | Resolution Implemented             |
+| --------- | ---------------------------------- | ------------------------------- | ---------------------------------- |
+| 1         | Firewall subnet deployment failure | Insufficient subnet size        | Expanded subnet to /26             |
+| 2         | Public IP compatibility issue      | Incorrect SKU selection         | Recreated using Standard SKU       |
+| 3         | Traffic bypassing firewall         | Missing route table association | Linked route table to subnet       |
+| 4         | DNS lookup failures                | DNS traffic blocked             | Added DNS network rule             |
+| 5         | Application rules not functioning  | Dependency on DNS resolution    | Restored DNS access                |
+| 6         | No Threat Intelligence events      | Logging not configured          | Enabled diagnostics and monitoring |
+
+---
+
+# Useful Diagnostic Commands
+
+The following commands proved valuable throughout the troubleshooting process and can be used during future Azure Firewall investigations.
+
+### Verify Firewall Status
 
 ```bash
-# Check firewall provisioning state
 az network firewall show \
   --resource-group rg-azure-firewall-lab \
   --name fw-lab \
   --query "provisioningState"
+```
 
-# View effective routes on VM NIC
+### Review Effective Routes
+
+```bash
 az network nic show-effective-route-table \
   --resource-group rg-azure-firewall-lab \
-  --name <nic-name> --output table
+  --name <nic-name> \
+  --output table
+```
 
-# Check firewall rules
+### Inspect Firewall Policies
+
+```bash
 az network firewall policy rule-collection-group list \
   --resource-group rg-azure-firewall-lab \
-  --policy-name fwpolicy-lab --output table
+  --policy-name fwpolicy-lab \
+  --output table
+```
 
-# Verify diagnostic settings
+### Validate Diagnostic Configuration
+
+```bash
 az monitor diagnostic-settings list \
   --resource <firewall-resource-id>
 ```
+
+## Conclusion
+
+The troubleshooting activities carried out during the Azure Firewall deployment successfully resolved configuration, routing, DNS, monitoring, and security policy issues. Through systematic investigation and corrective actions, the environment was brought to a fully operational state with traffic inspection, application filtering, threat intelligence protection, and monitoring capabilities functioning as intended. The lessons learned from these incidents provide valuable guidance for future Azure Firewall implementations and operational support activities.
