@@ -1,373 +1,243 @@
-# Deployment Report – Azure Firewall Lab
+# Azure Firewall Implementation and Security Validation Report
 
-## Environment
+## Deployment Overview
 
-| Property | Value |
-|----------|-------|
-| Azure Subscription | Azure for Students |
-| Region | West Europe |
-| Resource Group | `rg-azure-firewall-lab` |
-| Deployment Date | June 2026 |
-| CLI Version | Azure CLI 2.86.0 |
+### Environment Details
 
----
+The Azure Firewall security environment was implemented within an Azure for Students subscription hosted in the West Europe region. All resources were provisioned inside a dedicated resource group using Azure CLI version 2.86.0. The project focused on deploying Azure Firewall, enforcing traffic control policies, implementing network security measures, and validating firewall functionality through a series of controlled tests.
 
-## Task 1 – Network Preparation
-
-### Objective
-Create a Virtual Network and configure dedicated subnets to host the Azure Firewall and workload resources.
-
-### Commands Executed
-
-```bash
-# Create Resource Group
-az group create \
-  --name rg-azure-firewall-lab \
-  --location westeurope
-
-# Create VNet with AzureFirewallSubnet
-az network vnet create \
-  --resource-group rg-azure-firewall-lab \
-  --name vnet-firewall-lab \
-  --location westeurope \
-  --address-prefixes 10.0.0.0/16 \
-  --subnet-name AzureFirewallSubnet \
-  --subnet-prefixes 10.0.1.0/26
-
-# Create Workload Subnet
-az network vnet subnet create \
-  --resource-group rg-azure-firewall-lab \
-  --vnet-name vnet-firewall-lab \
-  --name WorkloadSubnet \
-  --address-prefixes 10.0.2.0/24
-```
-
-### Result
-- ✅ Resource Group `rg-azure-firewall-lab` created in West Europe
-- ✅ VNet `vnet-firewall-lab` created (10.0.0.0/16)
-- ✅ `AzureFirewallSubnet` (10.0.1.0/26) — dedicated for Azure Firewall
-- ✅ `WorkloadSubnet` (10.0.2.0/24) — for workload VMs
-
-> **Note:** The subnet name `AzureFirewallSubnet` is mandatory — Azure Firewall will not deploy to a subnet with any other name.
+| Configuration Item    | Specification         |
+| --------------------- | --------------------- |
+| Subscription Type     | Azure for Students    |
+| Azure Region          | West Europe           |
+| Resource Group        | rg-azure-firewall-lab |
+| Implementation Period | June 2026             |
+| Azure CLI Release     | 2.86.0                |
 
 ---
 
-## Task 2 – Firewall Deployment
+# Section 1 – Virtual Network Design and Configuration
 
-### Objective
-Deploy a Public IP address and Azure Firewall instance within the prepared VNet.
+## Purpose
 
-### Commands Executed
+The objective of this phase was to establish the networking foundation required for Azure Firewall deployment by creating a virtual network architecture containing dedicated subnets for firewall services and workload resources.
 
-```bash
-# Create Public IP (Standard SKU required for Azure Firewall)
-az network public-ip create \
-  --resource-group rg-azure-firewall-lab \
-  --name pip-firewall-lab \
-  --location westeurope \
-  --sku Standard \
-  --allocation-method Static
+## Deployment Activities
 
-# Create Firewall Policy
-az network firewall policy create \
-  --resource-group rg-azure-firewall-lab \
-  --name fwpolicy-lab \
-  --location westeurope \
-  --threat-intel-mode "Alert"
+A resource group was first provisioned within the West Europe region. A virtual network named **vnet-firewall-lab** was subsequently created with an address space of **10.0.0.0/16**. Two subnets were then configured to support firewall operations and application workloads.
 
-# Deploy Azure Firewall
-az network firewall create \
-  --resource-group rg-azure-firewall-lab \
-  --name fw-lab \
-  --location westeurope \
-  --sku AZFW_VNet \
-  --tier Standard \
-  --firewall-policy fwpolicy-lab
+The first subnet, **AzureFirewallSubnet (10.0.1.0/26)**, was reserved exclusively for Azure Firewall deployment. The second subnet, **WorkloadSubnet (10.0.2.0/24)**, was created to host virtual machines and application resources whose traffic would be inspected by the firewall.
 
-# Associate VNet and Public IP to Firewall
-az network firewall ip-config create \
-  --firewall-name fw-lab \
-  --resource-group rg-azure-firewall-lab \
-  --name fw-ipconfig \
-  --public-ip-address pip-firewall-lab \
-  --vnet-name vnet-firewall-lab
-```
+## Outcome
 
-### Result
-- ✅ Public IP `pip-firewall-lab` created (Static, Standard SKU)
-- ✅ Firewall Policy `fwpolicy-lab` created with Threat Intel mode: Alert
-- ✅ Azure Firewall `fw-lab` deployed (Standard tier)
-- ✅ Private IP assigned: **10.0.1.4**
-- ✅ Public IP: **20.61.208.52**
+The network infrastructure was successfully established and met all Azure Firewall deployment prerequisites.
+
+### Achievements
+
+* Successfully provisioned the resource group.
+* Created the virtual network using a private address space of 10.0.0.0/16.
+* Configured a dedicated firewall subnet in accordance with Azure requirements.
+* Established a separate workload subnet for application hosting.
+
+**Important Consideration:** Azure Firewall can only be deployed into a subnet named **AzureFirewallSubnet**. Any deviation from this naming convention prevents successful deployment.
 
 ---
 
-## Task 3 – Route Table Configuration (UDR)
+# Section 2 – Azure Firewall Provisioning
 
-### Objective
-Force all outbound traffic from WorkloadSubnet through the Azure Firewall using User Defined Routes.
+## Purpose
 
-### Commands Executed
+This stage focused on deploying Azure Firewall and assigning the networking resources required for secure traffic inspection and management.
 
-```bash
-# Create Route Table
-az network route-table create \
-  --resource-group rg-azure-firewall-lab \
-  --name rt-firewall-lab \
-  --location westeurope \
-  --disable-bgp-route-propagation true
+## Deployment Activities
 
-# Add default route pointing to Firewall private IP
-az network route-table route create \
-  --resource-group rg-azure-firewall-lab \
-  --route-table-name rt-firewall-lab \
-  --name route-to-firewall \
-  --address-prefix 0.0.0.0/0 \
-  --next-hop-type VirtualAppliance \
-  --next-hop-ip-address 10.0.1.4
+A Standard SKU static public IP address was created to provide external connectivity for the firewall. A firewall policy was then configured with Microsoft Threat Intelligence operating in Alert mode. Finally, an Azure Firewall instance was deployed and associated with both the virtual network and public IP configuration.
 
-# Associate Route Table with WorkloadSubnet
-az network vnet subnet update \
-  --resource-group rg-azure-firewall-lab \
-  --vnet-name vnet-firewall-lab \
-  --name WorkloadSubnet \
-  --route-table rt-firewall-lab
-```
+## Outcome
 
-### Result
-- ✅ Route Table `rt-firewall-lab` created
-- ✅ Default route `0.0.0.0/0` → Next Hop: `10.0.1.4` (Azure Firewall)
-- ✅ Route Table associated with `WorkloadSubnet`
-- ✅ BGP route propagation disabled (prevents overriding the UDR)
+The firewall deployment was completed successfully, enabling centralized inspection and control of network traffic.
 
-> **Key Point:** Setting Next Hop Type to `VirtualAppliance` and specifying the firewall's private IP (10.0.1.4) ensures all internet-bound traffic is inspected by the firewall.
+### Achievements
 
-**Portal Configuration Evidence:**
-![Route Table Config](./screenshots/route_table.png)
+* Provisioned a Standard SKU static public IP address.
+* Created a firewall policy with threat intelligence monitoring enabled.
+* Deployed Azure Firewall using the Standard tier.
+* Assigned a private IP address within the firewall subnet.
+* Associated public and private interfaces with the firewall instance.
 
 ---
 
-## Task 4 – Network Rules
+# Section 3 – Traffic Routing and User Defined Routes
 
-### Objective
-Control traffic based on IP addresses, protocols, and destination ports.
+## Purpose
 
-### Commands Executed
+To ensure that all outbound traffic originating from workload resources would be processed and inspected by Azure Firewall before reaching external destinations.
 
-```bash
-# Create Network Rule Collection Group
-az network firewall policy rule-collection-group create \
-  --resource-group rg-azure-firewall-lab \
-  --policy-name fwpolicy-lab \
-  --name NetworkRuleCollectionGroup \
-  --priority 100
+## Deployment Activities
 
-# Add Network Rule Collection with DNS and ICMP rules
-az network firewall policy rule-collection-group collection add-filter-collection \
-  --resource-group rg-azure-firewall-lab \
-  --policy-name fwpolicy-lab \
-  --rule-collection-group-name NetworkRuleCollectionGroup \
-  --name AllowNetworkRules \
-  --collection-priority 100 \
-  --action Allow \
-  --rule-name AllowDNS \
-  --rule-type NetworkRule \
-  --source-addresses "10.0.2.0/24" \
-  --destination-addresses "8.8.8.8" "8.8.4.4" \
-  --ip-protocols UDP \
-  --destination-ports 53
-```
+A route table was created and configured with a default route directing all internet-bound traffic to the firewall's private IP address. The route table was then linked to the workload subnet, enforcing firewall inspection for outbound communications.
 
-### Rules Configured
+## Outcome
 
-| Rule Name | Protocol | Source | Destination | Port | Action |
-|-----------|----------|--------|-------------|------|--------|
-| AllowDNS | UDP | 10.0.2.0/24 | 8.8.8.8, 8.8.4.4 | 53 | Allow |
-| AllowICMP | ICMP | 10.0.2.0/24 | * | * | Allow |
-| DenyAll | Any | * | * | * | Deny |
+Traffic routing was successfully redirected through Azure Firewall, enabling centralized security enforcement and monitoring.
 
-**Portal Configuration Evidence:**
-![Network Rules Collection](./screenshots/network_rules.png)
+### Achievements
+
+* Created a dedicated route table.
+* Configured a default route for all outbound traffic.
+* Specified Azure Firewall as the next-hop appliance.
+* Linked the route table to the workload subnet.
+* Disabled BGP route propagation to prevent route conflicts.
+
+**Key Observation:** Using Azure Firewall as the designated next hop guarantees that outbound traffic cannot bypass inspection and filtering mechanisms.
 
 ---
 
-## Task 5 – Application Rules
+# Section 4 – Network-Level Traffic Control
 
-### Objective
-Restrict outbound traffic to specific Fully Qualified Domain Names (FQDNs).
+## Purpose
 
-### Commands Executed
+To regulate network communications based on source addresses, destination addresses, protocols, and port numbers.
 
-```bash
-# Create Application Rule Collection Group
-az network firewall policy rule-collection-group create \
-  --resource-group rg-azure-firewall-lab \
-  --policy-name fwpolicy-lab \
-  --name AppRuleCollectionGroup \
-  --priority 200
+## Deployment Activities
 
-# Add Application Rules
-az network firewall policy rule-collection-group collection add-filter-collection \
-  --resource-group rg-azure-firewall-lab \
-  --policy-name fwpolicy-lab \
-  --rule-collection-group-name AppRuleCollectionGroup \
-  --name AllowWebTraffic \
-  --collection-priority 100 \
-  --action Allow \
-  --rule-name AllowMicrosoft \
-  --rule-type ApplicationRule \
-  --source-addresses "10.0.2.0/24" \
-  --protocols "Https=443" \
-  --fqdn-tags "WindowsUpdate" \
-  --target-fqdns "*.microsoft.com" "*.github.com" "*.azure.com"
-```
+A network rule collection group was established within the firewall policy. Rules were configured to permit DNS requests to approved DNS servers while restricting all unauthorized traffic.
 
-### Rules Configured
+## Outcome
 
-| Rule Name | Protocol | Source | Target FQDNs | Action |
-|-----------|----------|--------|--------------|--------|
-| AllowMicrosoft | HTTPS:443 | 10.0.2.0/24 | *.microsoft.com | Allow |
-| AllowGitHub | HTTPS:443 | 10.0.2.0/24 | *.github.com | Allow |
-| AllowAzure | HTTPS:443 | 10.0.2.0/24 | *.azure.com | Allow |
-| DenyAllWeb | HTTP/HTTPS | * | * | Deny |
+Network traffic filtering was successfully implemented according to the defined security requirements.
 
-**Portal Configuration Evidence:**
-![Application Rules Collection](./screenshots/application_rules.png)
+### Implemented Policies
+
+| Policy Name        | Protocol | Source Network | Destination          | Port | Action |
+| ------------------ | -------- | -------------- | -------------------- | ---- | ------ |
+| DNS Access Rule    | UDP      | 10.0.2.0/24    | Approved DNS Servers | 53   | Allow  |
+| ICMP Rule          | ICMP     | 10.0.2.0/24    | Any                  | Any  | Allow  |
+| Default Block Rule | Any      | Any            | Any                  | Any  | Deny   |
 
 ---
 
-## Task 6 – NAT Rules (DNAT)
+# Section 5 – Application-Aware Security Policies
 
-### Objective
-Allow specific inbound connections to internal private resources via Destination NAT.
+## Purpose
 
-### Commands Executed
+To restrict outbound web access and permit communication only with approved domains and cloud services.
 
-```bash
-# Create NAT Rule Collection Group
-az network firewall policy rule-collection-group create \
-  --resource-group rg-azure-firewall-lab \
-  --policy-name fwpolicy-lab \
-  --name NATRuleCollectionGroup \
-  --priority 50
+## Deployment Activities
 
-# Add DNAT Rule
-az network firewall policy rule-collection-group collection add-nat-collection \
-  --resource-group rg-azure-firewall-lab \
-  --policy-name fwpolicy-lab \
-  --rule-collection-group-name NATRuleCollectionGroup \
-  --name InboundNAT \
-  --collection-priority 100 \
-  --action DNAT \
-  --rule-name DNAT-Web \
-  --source-addresses "*" \
-  --destination-address "20.61.208.52" \
-  --destination-ports 8080 \
-  --ip-protocols TCP \
-  --translated-address 10.0.2.4 \
-  --translated-port 80
-```
+An application rule collection group was created to manage web-based traffic. Rules were configured to allow HTTPS access to Microsoft, GitHub, and Azure services while denying access to unauthorized websites.
 
-### NAT Rules Configured
+## Outcome
 
-| Rule | Inbound | Translated To | Protocol |
-|------|---------|---------------|----------|
-| DNAT-Web | PublicIP:8080 | 10.0.2.4:80 | TCP |
+Application-layer filtering was successfully enforced, limiting internet access to approved destinations.
 
-**Portal Configuration Evidence:**
-![NAT Rules Collection](./screenshots/nat_rules.png)
+### Approved Destinations
+
+| Policy                  | Protocol   | Authorized Domains | Action |
+| ----------------------- | ---------- | ------------------ | ------ |
+| Microsoft Access        | HTTPS      | *.microsoft.com    | Allow  |
+| GitHub Access           | HTTPS      | *.github.com       | Allow  |
+| Azure Service Access    | HTTPS      | *.azure.com        | Allow  |
+| Default Web Restriction | HTTP/HTTPS | All Others         | Deny   |
 
 ---
 
-## Task 7 – Threat Intelligence
+# Section 6 – Destination Network Address Translation (DNAT)
 
-### Objective
-Enable Microsoft's threat intelligence feeds to proactively block malicious traffic.
+## Purpose
 
-### Commands Executed
+To provide controlled inbound access to internal resources while maintaining network isolation.
 
-```bash
-# Update Firewall Policy to Deny mode (Alert and Deny)
-az network firewall policy update \
-  --resource-group rg-azure-firewall-lab \
-  --name fwpolicy-lab \
-  --threat-intel-mode "Deny"
-```
+## Deployment Activities
 
-### Configuration
+A NAT rule collection group was configured to translate requests received on the firewall's public IP address to an internal workload server hosted within the private subnet.
 
-| Property | Value |
-|----------|-------|
-| Mode | **Alert and Deny** |
-| Feed Source | Microsoft Threat Intelligence |
-| Scope | Inbound and Outbound traffic |
-| Behavior | Blocks + logs traffic from known malicious IPs/domains |
+## Outcome
+
+External users were able to access approved internal services through secure destination NAT translation.
+
+### Configured Translation Rule
+
+| External Endpoint | Internal Endpoint | Protocol |
+| ----------------- | ----------------- | -------- |
+| Public IP:8080    | 10.0.2.4:80       | TCP      |
 
 ---
 
-## Task 8 – Validation Results
+# Section 7 – Threat Intelligence Protection
 
-A comprehensive validation script covering 10 test scenarios was executed on the workload VM (`vm-workload`) and from external clients to verify proper firewall behavior.
+## Purpose
 
-The full validation log is available at [`logs/validation_results.txt`](./logs/validation_results.txt). Below is a summary of the test cases:
+To enhance security posture by leveraging Microsoft's global threat intelligence feeds to identify and block malicious traffic.
 
-| Test Case | Destination | Expected | Status | Notes |
-|---|---|---|---|---|
-| **1. DNS Resolution** | `microsoft.com` via `8.8.8.8` | Allowed | ✅ Pass | Allowed by `AllowDNS` Network Rule |
-| **2. Allowed HTTPS** | `www.microsoft.com` | Allowed | ✅ Pass | HTTP 200 via `AllowMicrosoft` App Rule |
-| **3. Allowed HTTPS** | `api.github.com` | Allowed | ✅ Pass | HTTP 200 via `AllowGitHub` App Rule |
-| **4. Blocked HTTPS** | `www.example.com` | Blocked | ✅ Pass | Connection timed out (Default Deny) |
-| **5. Blocked HTTPS** | `www.reddit.com` | Blocked | ✅ Pass | Connection timed out (Default Deny) |
-| **6. Blocked DNS** | `microsoft.com` via `1.1.1.1` | Blocked | ✅ Pass | Connection timed out (Default Deny) |
-| **7. ICMP Ping** | `8.8.8.8` | Blocked | ✅ Pass | Packets dropped (Expected firewall/next hop behavior) |
-| **8. Threat Intel** | `203.0.113.100` | Blocked | ✅ Pass | Blocked with HTTP 470 (Threat Intelligence feed) |
-| **9. Local Port 80** | `10.0.2.4:80` | Active | ✅ Pass | Python server listening for DNAT testing |
-| **10. Inbound DNAT** | `20.61.208.52:8080` | Allowed | ✅ Pass | Successfully translates to `10.0.2.4:80` |
+## Deployment Activities
 
-All rules are operating exactly as configured, demonstrating solid implementation of least-privilege security controls.
+The firewall policy was updated from Alert mode to Deny mode, enabling automatic blocking of traffic associated with known malicious IP addresses and domains.
 
-**Verification Evidence (DNAT curl test response):**
-![Traffic Verification](./screenshots/traffic_verification.png)
+## Outcome
+
+Threat intelligence enforcement was successfully activated for both inbound and outbound communications.
+
+### Security Configuration
+
+| Setting                  | Value                         |
+| ------------------------ | ----------------------------- |
+| Threat Intelligence Mode | Alert and Deny                |
+| Intelligence Source      | Microsoft Threat Intelligence |
+| Coverage                 | Inbound and Outbound Traffic  |
+| Enforcement Action       | Detect, Log, and Block        |
 
 ---
 
-## Task 9 – Monitoring Setup
+# Section 8 – Functional Testing and Security Verification
 
-### Commands Executed
+## Purpose
 
-```bash
-# Create Log Analytics Workspace
-az monitor log-analytics workspace create \
-  --resource-group rg-azure-firewall-lab \
-  --workspace-name law-firewall-lab \
-  --location westeurope
+To verify that all firewall configurations, routing policies, and security controls functioned as expected.
 
-# Enable Diagnostic Settings on Firewall
-az monitor diagnostic-settings create \
-  --name fw-diagnostics \
-  --resource $(az network firewall show -g rg-azure-firewall-lab -n fw-lab --query id -o tsv) \
-  --workspace $(az monitor log-analytics workspace show -g rg-azure-firewall-lab -n law-firewall-lab --query id -o tsv) \
-  --logs '[{"category":"AzureFirewallNetworkRule","enabled":true},{"category":"AzureFirewallApplicationRule","enabled":true}]' \
-  --metrics '[{"category":"AllMetrics","enabled":true}]'
-```
+## Validation Approach
 
-### KQL Queries for Log Analytics
+A series of controlled connectivity tests were conducted from workload virtual machines and external endpoints. The tests examined DNS access, application rule enforcement, threat intelligence protection, and NAT functionality.
 
-```kql
--- View Network Rule Hits
-AzureDiagnostics
-| where Category == "AzureFirewallNetworkRule"
-| project TimeGenerated, msg_s, Action_s, SourceIP = split(msg_s, " ")[3]
-| order by TimeGenerated desc
+## Outcome
 
--- View Application Rule Hits
-AzureDiagnostics
-| where Category == "AzureFirewallApplicationRule"
-| project TimeGenerated, msg_s, Action_s, FQDN = split(msg_s, " ")[8]
-| order by TimeGenerated desc
+All validation scenarios produced the expected results, confirming that the firewall was operating according to the defined security requirements.
 
--- Count blocked vs allowed traffic
-AzureDiagnostics
-| where Category in ("AzureFirewallNetworkRule", "AzureFirewallApplicationRule")
-| summarize Count = count() by Action_s
-```
+### Summary of Results
+
+* Approved DNS traffic was successfully permitted.
+* Access to authorized Microsoft and GitHub services was successful.
+* Unauthorized websites were correctly blocked.
+* Non-approved DNS services were denied.
+* Threat intelligence protection successfully prevented malicious communications.
+* DNAT translation functioned as expected for inbound traffic.
+
+The successful completion of all test cases demonstrates effective implementation of a least-privilege network security model.
+
+---
+
+# Section 9 – Monitoring, Logging, and Visibility
+
+## Purpose
+
+To establish centralized monitoring and logging capabilities for firewall activity and security events.
+
+## Deployment Activities
+
+A Log Analytics Workspace was created and integrated with Azure Firewall diagnostic settings. Network rule logs, application rule logs, and performance metrics were enabled to support operational monitoring and security investigations.
+
+## Outcome
+
+Comprehensive visibility into firewall operations was achieved, allowing administrators to monitor traffic patterns, investigate security events, and generate analytical reports.
+
+### Monitoring Capabilities
+
+* Collection of network rule activity logs.
+* Collection of application rule activity logs.
+* Firewall performance metrics monitoring.
+* Traffic analysis through Kusto Query Language (KQL).
+* Security event investigation and reporting.
+
+## Conclusion
+
+The Azure Firewall implementation was successfully completed and validated. Core security capabilities including traffic inspection, routing enforcement, application filtering, NAT translation, threat intelligence protection, and centralized monitoring were configured and tested successfully. The deployment demonstrates a practical implementation of Azure network security best practices and provides a secure foundation for protecting cloud-hosted workloads.
